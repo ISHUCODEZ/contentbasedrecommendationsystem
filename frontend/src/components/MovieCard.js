@@ -1,29 +1,68 @@
 import React from 'react';
-import { TrendingUp } from 'lucide-react';
+import { TrendingUp, Film } from 'lucide-react';
 
-const posterImages = [
-  'https://images.unsplash.com/photo-1509347528160-9a9e33742cdb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHw0fHxtb3ZpZSUyMHBvc3RlcnxlbnwwfHx8fDE3NzYwNzIwNzF8MA&ixlib=rb-4.1.0&q=85',
-  'https://images.unsplash.com/photo-1635805737707-575885ab0820?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHwyfHxtb3ZpZSUyMHBvc3RlcnxlbnwwfHx8fDE3NzYwNzIwNzF8MA&ixlib=rb-4.1.0&q=85',
-  'https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnxlbnwwfHx8fDE3NzYwNzIwNzF8MA&ixlib=rb-4.1.0&q=85',
-];
+const GENRE_COLORS = {
+  'Action': '#DC2626', 'Adventure': '#EA580C', 'Animation': '#D97706',
+  'Children': '#65A30D', 'Comedy': '#16A34A', 'Crime': '#475569',
+  'Documentary': '#0891B2', 'Drama': '#7C3AED', 'Fantasy': '#C026D3',
+  'Film-Noir': '#1E293B', 'Horror': '#991B1B', 'IMAX': '#0369A1',
+  'Musical': '#DB2777', 'Mystery': '#4338CA', 'Romance': '#E11D48',
+  'Sci-Fi': '#0284C7', 'Thriller': '#B91C1C', 'War': '#57534E',
+  'Western': '#92400E', 'Comedies': '#16A34A', 'Dramas': '#7C3AED',
+  'Documentaries': '#0891B2', 'TV Shows': '#6366F1',
+  'International Movies': '#0D9488', 'International TV Shows': '#0D9488',
+};
+
+function getGenreColor(genres) {
+  if (!genres) return '#374151';
+  const first = genres.split('|')[0].trim();
+  return GENRE_COLORS[first] || '#374151';
+}
+
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
 
 const MovieCard = ({ movie, onClick, showScore = false, index }) => {
-  const posterUrl = posterImages[(index || 0) % posterImages.length];
+  const color = getGenreColor(movie.genres);
+  const hash = hashStr(movie.title || '');
   const isNetflix = movie.source === 'netflix';
+  // Create a subtle pattern variation per movie
+  const angle = (hash % 360);
+  const darkerColor = color + '99';
 
   return (
     <div
-      className="movie-card relative rounded-md overflow-hidden min-w-[160px] w-40 h-60 md:w-48 md:h-72 flex-shrink-0 bg-[#141414] group"
+      className="movie-card relative rounded-md overflow-hidden min-w-[160px] w-40 h-60 md:w-48 md:h-72 flex-shrink-0 group"
       onClick={onClick}
       data-testid={`movie-card-${movie.movieId}`}
     >
-      <img src={posterUrl} alt={movie.title} className="w-full h-full object-cover" />
+      {/* Genre-colored gradient poster */}
+      <div
+        className="w-full h-full flex flex-col items-center justify-center p-3"
+        style={{
+          background: `linear-gradient(${angle}deg, ${color}, #0A0A0A 85%)`,
+        }}
+      >
+        <Film className="w-8 h-8 mb-3 opacity-30 text-white" />
+        <p className="text-center text-xs font-semibold text-white/90 line-clamp-3 leading-tight">
+          {movie.title}
+        </p>
+        <p className="text-center text-[10px] text-white/50 mt-1.5 line-clamp-1">
+          {movie.genres?.split('|').slice(0, 2).join(' / ')}
+        </p>
+      </div>
+
       {/* Source badge */}
       <div className="absolute top-2 left-2">
         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isNetflix ? 'bg-red-600 text-white' : 'bg-blue-600 text-white'}`}>
           {isNetflix ? 'N' : 'ML'}
         </span>
       </div>
+
+      {/* Hover overlay */}
       <div className="movie-card-overlay">
         <h3 className="text-sm font-semibold mb-1 line-clamp-2">{movie.title}</h3>
         {showScore && movie.similarity_score !== undefined && (
