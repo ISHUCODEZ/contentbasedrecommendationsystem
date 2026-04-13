@@ -1,61 +1,39 @@
 # Content-Based Recommendation System - PRD
 
 ## Problem Statement
-Design a Content Based Recommendation System using MovieLens and Netflix dataset.
+Design a Content Based Recommendation System using MovieLens and Netflix dataset with word embeddings, hybrid recommendations, evaluation metrics, authentication, and user profiles.
 
 ## Architecture
-- **Backend**: FastAPI + Python (scikit-learn, gensim, sentence-transformers)
-- **Frontend**: React + TailwindCSS + Recharts
-- **Database**: MongoDB (user ratings storage)
-- **Dataset**: MovieLens ml-latest-small (9,742 movies, 100,836 ratings)
-
-## Core Requirements
-1. Movie search and personalized recommendations
-2. Multiple recommendation algorithms
-3. User rating system
-4. Genre browsing with filters
-5. Model evaluation and comparison
+- **Backend**: FastAPI + Python (scikit-learn, gensim, sentence-transformers, bcrypt, PyJWT)
+- **Frontend**: React + TailwindCSS + Recharts + Framer Motion
+- **Database**: MongoDB (users, ratings, watchlist, recommendation history)
+- **Datasets**: MovieLens ml-latest-small (9,742 movies) + Netflix Movies & TV Shows (7,787 titles) = 17,529 total
 
 ## What's Been Implemented (April 2026)
 
-### 7 Recommendation Algorithms
-- **TF-IDF + Cosine Similarity** - Text-based similarity on genres + tags
-- **Genre-Based Matching** - Jaccard similarity on genre sets
-- **Combined** - Weighted blend (60% TF-IDF + 40% Genre)
-- **Word2Vec** - Gensim Word2Vec trained on movie metadata
-- **Sentence-BERT** - all-MiniLM-L6-v2 embeddings for semantic similarity
-- **Collaborative Filtering** - Item-item CF from user-item ratings matrix
-- **Hybrid** - 50% Content (TF-IDF) + 50% Collaborative
-
-### Evaluation Metrics
-- Precision@K, Recall@K, F1@K, MAP@K, NDCG@K
-- Configurable K values (5, 10, 20)
-- Leave-one-out style evaluation on sampled users
-- Results cached for performance
-
-### Frontend Features
+### Phase 1: Core Recommendation System
+- TF-IDF + Cosine Similarity
+- Genre-Based Matching (Jaccard)
+- Combined (weighted TF-IDF + Genre)
 - Netflix-style dark cinematic UI
-- Hero section with featured movie
-- 7-algorithm tab selector
-- Genre filter pills
-- Movie detail modal with star rating
-- Search functionality
-- Dedicated Evaluation page with:
-  - Bar charts (all metrics × all models)
-  - Radar chart (multi-dimensional comparison)
-  - Detailed comparison table (Model A vs Model B)
-  - Model status indicators
-  - K-value selector
+
+### Phase 2: Advanced Models + Evaluation
+- Word2Vec (Gensim) embeddings
+- Sentence-BERT (all-MiniLM-L6-v2)
+- Collaborative Filtering (item-item CF)
+- Hybrid (50% content + 50% collaborative)
+- Evaluation: Precision@K, Recall@K, F1@K, MAP@K, NDCG@K
+- Model comparison dashboard with bar/radar charts
+
+### Phase 3: Netflix + Auth + Profiles
+- Netflix Movies & TV Shows dataset integrated (7,787 titles with director, cast, description)
+- JWT email/password authentication (bcrypt hashing)
+- User profiles: ratings, watchlist/favorites, recommendation history
+- Source badges (MovieLens/Netflix) on movie cards
+- Rich movie metadata display (director, cast, country, description)
 
 ## Prioritized Backlog
-- P0: Complete (all core features implemented)
-- P1: User authentication for personalized profiles
-- P1: Netflix dataset integration (currently MovieLens only)
-- P2: A/B testing framework for algorithms
-- P2: Real-time recommendation updates based on browsing history
-
-## Next Tasks
-1. Add user authentication for persistent profiles
-2. Integrate Netflix dataset
-3. Add more movie metadata (TMDB API for posters, descriptions, cast)
-4. Implement real-time collaborative filtering updates
+- P1: Netflix ratings data (currently metadata only)
+- P2: Real movie posters via TMDB API (when user provides key)
+- P2: A/B testing framework for recommendation algorithms
+- P3: Social features (share recommendations, follow users)
