@@ -12,6 +12,9 @@ import GenreFilter from './components/GenreFilter';
 import SimilarityBreakdown from './components/SimilarityBreakdown';
 import EvaluationPage from './components/EvaluationPage';
 import ProfilePage from './components/ProfilePage';
+import ColdStartQuiz from './components/ColdStartQuiz';
+import ABTestPage from './components/ABTestPage';
+import SimilarityGraph from './components/SimilarityGraph';
 import { Loader2 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -21,6 +24,7 @@ function AppContent() {
   const { user, loading: authLoading, login, register, logout, getAuthHeaders } = useAuth();
   const [page, setPage] = useState('home');
   const [isGuest, setIsGuest] = useState(false);
+  const [showColdStart, setShowColdStart] = useState(false);
   const [featuredMovie, setFeaturedMovie] = useState(null);
   const [movies, setMovies] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
@@ -210,6 +214,24 @@ function AppContent() {
     );
   }
 
+  if (page === 'abtest') {
+    return (
+      <div data-testid="app-container">
+        <Navbar onSearch={handleSearch} onNavigate={setPage} currentPage={page} user={user} onLogout={handleLogout} isGuest={isGuest} />
+        <ABTestPage onBack={() => setPage('home')} />
+      </div>
+    );
+  }
+
+  if (page === 'graph') {
+    return (
+      <div data-testid="app-container">
+        <Navbar onSearch={handleSearch} onNavigate={setPage} currentPage={page} user={user} onLogout={handleLogout} isGuest={isGuest} />
+        <SimilarityGraph onBack={() => setPage('home')} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0A0A0A]" data-testid="app-container">
       <Navbar onSearch={handleSearch} onNavigate={setPage} currentPage={page} user={user} onLogout={handleLogout} isGuest={isGuest} />
@@ -249,6 +271,23 @@ function AppContent() {
       <div className="mt-4">
         <AlgorithmSelector selectedAlgorithm={selectedAlgorithm} onSelectAlgorithm={setSelectedAlgorithm} />
         <GenreFilter genres={genres} selectedGenre={selectedGenre} onSelectGenre={setSelectedGenre} />
+
+        {/* Cold Start Quiz */}
+        {showColdStart && (
+          <ColdStartQuiz onComplete={(recs) => { setRecommendations(recs); setShowColdStart(false); }} />
+        )}
+
+        {!showColdStart && recommendations.length === 0 && !searchResults.length && (
+          <div className="px-4 md:px-8 lg:px-12 mb-6">
+            <button
+              onClick={() => setShowColdStart(true)}
+              className="bg-[#1F1F1F] hover:bg-[#2A2A2A] border border-white/10 text-neutral-300 px-5 py-2.5 rounded-lg text-sm transition-colors"
+              data-testid="show-quiz-btn"
+            >
+              New here? Take the genre quiz for personalized picks
+            </button>
+          </div>
+        )}
 
         {searchResults.length > 0 && (
           <MovieRow title="Search Results" movies={searchResults} onMovieClick={handleMovieClick} />

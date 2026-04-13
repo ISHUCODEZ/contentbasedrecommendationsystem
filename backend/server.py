@@ -19,6 +19,11 @@ from auth import (
     create_access_token, create_refresh_token,
     get_current_user, seed_admin,
 )
+from advanced_models import (
+    explain_recommendation, time_decay_weights,
+    diversity_score, serendipity_score,
+    cluster_users, ab_test,
+)
 
 # MongoDB
 mongo_url = os.environ['MONGO_URL']
@@ -37,7 +42,7 @@ _eval_cache = {}
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-VALID_ALGOS = ('tfidf', 'genre', 'combined', 'word2vec', 'bert', 'collaborative', 'hybrid')
+VALID_ALGOS = ('tfidf', 'genre', 'combined', 'word2vec', 'bert', 'collaborative', 'hybrid', 'svd', 'kg', 'sentiment')
 
 
 # ═══════════════════════ Pydantic Models ═══════════════════════
@@ -270,6 +275,9 @@ async def get_recommendations(
         'bert': rec_engine.get_recommendations_bert,
         'collaborative': rec_engine.get_recommendations_collaborative,
         'hybrid': rec_engine.get_recommendations_hybrid,
+        'svd': rec_engine.get_recommendations_svd,
+        'kg': rec_engine.get_recommendations_kg,
+        'sentiment': rec_engine.get_recommendations_sentiment,
     }
     try:
         recs = dispatch[algorithm](movie_id, top_n)
@@ -337,6 +345,9 @@ async def models_status():
         "bert": rec_engine.bert_embeddings is not None,
         "collaborative": rec_engine.collab_matrix is not None,
         "hybrid": rec_engine.collab_matrix is not None and rec_engine.tfidf_matrix is not None,
+        "svd": rec_engine.svd_model is not None and rec_engine.svd_model.movie_factors is not None,
+        "kg": rec_engine.knowledge_graph is not None,
+        "sentiment": bool(rec_engine.sentiment_weights),
     }
 
 
@@ -350,6 +361,172 @@ async def dataset_stats():
         "netflix_count": nf_count,
         "total_ratings": len(rec_engine.ratings_df),
     }
+
+
+# ═══════════════════════ ADVANCED FEATURES ═══════════════════════
+
+@api.get("/explain/{movie_id}/{rec_movie_id}")
+async def get_explanation(movie_id: int, rec_movie_id: int):
+    """Feature #1: Explainable recommendations."""
+    src = rec_engine.get_movie_by_id(movie_id)
+    tgt = rec_engine.get_movie_by_id(rec_movie_id)
+    if not src or not tgt:
+        raise HTTPException(404, "Movie not found")
+    reasons = explain_recommendation(src, tgt, rec_engine.movies_df)
+    return {"source_movie": src['title'], "recommended_movie": tgt['title'], "reasons": reasons}
+
+
+@api.get("/recommendations/{movie_id}/explained")
+async def get_recommendations_explained(
+    movie_id: int,
+    algorithm: str = Query(default='tfidf'),
+    top_n: int = Query(default=10, le=30),
+):
+    """Feature #1: Get recommendations with explanations."""
+    if algorithm not in VALID_ALGOS:
+        raise HTTPException(400, "Invalid algorithm")
+    dispatch = {
+        'tfidf': rec_engine.get_recommendations_tfidf,
+        'genre': rec_engine.get_recommendations_genre,
+        'combined': rec_engine.get_recommendations_combined,
+        'word2vec': rec_engine.get_recommendations_word2vec,
+        'bert': rec_engine.get_recommendations_bert,
+        'collaborative': rec_engine.get_recommendations_collaborative,
+        'hybrid': rec_engine.get_recommendations_hybrid,
+        'svd': rec_engine.get_recommendations_svd,
+        'kg': rec_engine.get_recommendations_kg,
+        'sentiment': rec_engine.get_recommendations_sentiment,
+    }
+    recs = dispatch[algorithm](movie_id, top_n)
+    src = rec_engine.get_movie_by_id(movie_id)
+    for r in recs:
+        tgt = rec_engine.get_movie_by_id(r['movieId'])
+        if src and tgt:
+            r['explanation'] = explain_recommendation(src, tgt, rec_engine.movies_df)
+        else:
+            r['explanation'] = []
+    return {"movie_id": movie_id, "algorithm": algorithm, "recommendations": recs}
+
+
+@api.get("/coldstart/genres")
+async def coldstart_genres():
+    """Feature #2: Cold-start quiz - get popular genres with sample movies."""
+    genres = rec_engine.get_all_genres()
+    genre_data = []
+    for g in genres:
+        if g == '(no genres listed)':
+            continue
+        movies = rec_engine.get_movies_by_genre(g, 5)
+        genre_data.append({"genre": g, "sample_movies": movies[:3]})
+    return {"genres": genre_data}
+
+
+@api.post("/coldstart/recommend")
+async def coldstart_recommend(request: Request):
+    """Feature #2: Get recommendations from selected genres."""
+    body = await request.json()
+    selected_genres = body.get("genres", [])
+    top_n = body.get("top_n", 20)
+    if not selected_genres:
+        raise HTTPException(400, "Select at least one genre")
+    # Find movies matching selected genres and get recommendations
+    candidates = rec_engine.movies_df[
+        rec_engine.movies_df['genres'].apply(
+            lambda g: any(sg in str(g) for sg in selected_genres)
+        )
+    ]
+    if len(candidates) == 0:
+        return {"recommendations": []}
+    # Pick a seed movie from each genre and get hybrid recommendations
+    all_recs = []
+    seen = set()
+    for genre in selected_genres[:3]:
+        genre_movies = candidates[candidates['genres'].str.contains(genre, case=False, na=False)]
+        if len(genre_movies) > 0:
+            seed = genre_movies.iloc[0]['movieId']
+            recs = rec_engine.get_recommendations_hybrid(int(seed), top_n=top_n // len(selected_genres))
+            for r in recs:
+                if r['movieId'] not in seen:
+                    seen.add(r['movieId'])
+                    all_recs.append(r)
+    return {"recommendations": all_recs[:top_n], "selected_genres": selected_genres}
+
+
+@api.get("/ab-test/{movie_id}")
+async def run_ab_test(
+    movie_id: int,
+    algo_a: str = Query(default='tfidf'),
+    algo_b: str = Query(default='collaborative'),
+    top_n: int = Query(default=10),
+):
+    """Feature #8: A/B testing two algorithms side by side."""
+    return ab_test(rec_engine, movie_id, algo_a, algo_b, top_n)
+
+
+@api.get("/user-clusters")
+async def get_user_clusters():
+    """Feature #10: User clustering."""
+    return cluster_users(rec_engine.ratings_df, n_clusters=8)
+
+
+@api.get("/diversity/{movie_id}")
+async def get_diversity(movie_id: int, algorithm: str = 'tfidf', top_n: int = 10):
+    """Feature #10: Diversity & serendipity of recommendations."""
+    dispatch = {
+        'tfidf': rec_engine.get_recommendations_tfidf,
+        'genre': rec_engine.get_recommendations_genre,
+        'combined': rec_engine.get_recommendations_combined,
+        'word2vec': rec_engine.get_recommendations_word2vec,
+        'bert': rec_engine.get_recommendations_bert,
+        'collaborative': rec_engine.get_recommendations_collaborative,
+        'hybrid': rec_engine.get_recommendations_hybrid,
+        'svd': rec_engine.get_recommendations_svd,
+        'kg': rec_engine.get_recommendations_kg,
+        'sentiment': rec_engine.get_recommendations_sentiment,
+    }
+    fn = dispatch.get(algorithm, dispatch['tfidf'])
+    recs = fn(movie_id, top_n)
+    div = diversity_score(recs, rec_engine.movies_df)
+    return {"movie_id": movie_id, "algorithm": algorithm, "diversity": float(div), "recommendation_count": len(recs)}
+
+
+@api.get("/similarity-graph/{movie_id}")
+async def get_similarity_graph(movie_id: int, top_n: int = Query(default=15, le=30)):
+    """Feature #13: Interactive similarity graph data."""
+    movie = rec_engine.get_movie_by_id(movie_id)
+    if not movie:
+        raise HTTPException(404, "Movie not found")
+    # Get recommendations from multiple algorithms
+    nodes = [{"id": movie_id, "title": movie['title'], "genres": movie['genres'], "group": "source", "source": movie.get('source', '')}]
+    links = []
+    seen = {movie_id}
+    algos = {'tfidf': rec_engine.get_recommendations_tfidf, 'genre': rec_engine.get_recommendations_genre,
+             'collaborative': rec_engine.get_recommendations_collaborative, 'bert': rec_engine.get_recommendations_bert}
+    for algo_name, fn in algos.items():
+        try:
+            recs = fn(movie_id, min(top_n, 5))
+            for r in recs:
+                mid = r['movieId']
+                if mid not in seen:
+                    seen.add(mid)
+                    nodes.append({"id": mid, "title": r['title'], "genres": r.get('genres', ''),
+                                  "group": algo_name, "source": r.get('source', '')})
+                links.append({"source": movie_id, "target": mid, "algorithm": algo_name,
+                              "weight": r.get('similarity_score', 0)})
+        except Exception:
+            continue
+    # Add inter-recommendation links for connected movies
+    node_ids = [n['id'] for n in nodes if n['id'] != movie_id]
+    for i in range(min(len(node_ids), 8)):
+        for j in range(i + 1, min(len(node_ids), 8)):
+            try:
+                sim = rec_engine.compare_movies(node_ids[i], node_ids[j])
+                if sim and sim['combined_similarity'] > 0.3:
+                    links.append({"source": node_ids[i], "target": node_ids[j],
+                                  "algorithm": "cross", "weight": sim['combined_similarity']})
+            except Exception:
+                continue
+    return {"nodes": nodes, "links": links}
 
 
 # ═══════════════════════ APP CONFIG ═══════════════════════

@@ -17,6 +17,9 @@ const ALGO_COLORS = {
   'BERT':           '#8B5CF6',
   'Collaborative':  '#EC4899',
   'Hybrid':         '#14B8A6',
+  'SVD':            '#F97316',
+  'KnowledgeGraph': '#06B6D4',
+  'Sentiment':      '#A855F7',
 };
 
 const METRIC_LABELS = {

@@ -300,7 +300,7 @@ class MovieRecommendationTester:
             return False
 
     def test_models_status(self):
-        """Test GET /api/models/status - all 7 models should be active"""
+        """Test GET /api/models/status - all 10 models should be active"""
         success, response = self.run_test(
             "Models Status",
             "GET",
@@ -308,18 +308,22 @@ class MovieRecommendationTester:
             200
         )
         if success:
-            expected_models = ['tfidf', 'genre', 'combined', 'word2vec', 'bert', 'collaborative', 'hybrid']
+            expected_models = ['tfidf', 'genre', 'combined', 'word2vec', 'bert', 'collaborative', 'hybrid', 'svd', 'kg', 'sentiment']
+            active_count = 0
             for model in expected_models:
                 if model in response:
                     status = response[model]
+                    if status:
+                        active_count += 1
                     print(f"   {model}: {'✅ Active' if status else '❌ Inactive'}")
                 else:
                     print(f"   {model}: ❌ Missing")
+            print(f"   Total active models: {active_count}/10")
         return success
 
     def test_recommendations(self, movie_id=1):
-        """Test all recommendation algorithms"""
-        algorithms = ['tfidf', 'word2vec', 'bert', 'collaborative', 'hybrid']
+        """Test all recommendation algorithms including advanced ones"""
+        algorithms = ['tfidf', 'word2vec', 'bert', 'collaborative', 'hybrid', 'svd', 'kg', 'sentiment']
         results = {}
         
         for algo in algorithms:
@@ -425,6 +429,136 @@ class MovieRecommendationTester:
             print(f"   Rating: {response.get('average_rating', 0):.2f}")
         return success
 
+    # ═══════════════════════ ADVANCED FEATURES TESTS ═══════════════════════
+
+    def test_explainable_recommendations(self):
+        """Test GET /api/explain/1/2 - explainable recommendation reasons"""
+        success, response = self.run_test(
+            "Explainable Recommendations",
+            "GET",
+            "explain/1/2",
+            200
+        )
+        if success:
+            print(f"   Source movie: {response.get('source_movie', 'N/A')}")
+            print(f"   Recommended movie: {response.get('recommended_movie', 'N/A')}")
+            reasons = response.get('reasons', [])
+            print(f"   Explanation reasons: {len(reasons)}")
+            if reasons:
+                print(f"   Sample reason: {reasons[0]}")
+        return success
+
+    def test_recommendations_with_explanations(self):
+        """Test GET /api/recommendations/1/explained?algorithm=tfidf&top_n=5"""
+        success, response = self.run_test(
+            "Recommendations with Explanations",
+            "GET",
+            "recommendations/1/explained?algorithm=tfidf&top_n=5",
+            200
+        )
+        if success and 'recommendations' in response:
+            recs = response['recommendations']
+            print(f"   Got {len(recs)} recommendations with explanations")
+            if recs and 'explanation' in recs[0]:
+                print(f"   First rec explanation: {recs[0]['explanation'][:2] if recs[0]['explanation'] else 'None'}")
+        return success
+
+    def test_coldstart_genres(self):
+        """Test GET /api/coldstart/genres - cold start quiz genre data"""
+        success, response = self.run_test(
+            "Cold Start Genres",
+            "GET",
+            "coldstart/genres",
+            200
+        )
+        if success and 'genres' in response:
+            genres = response['genres']
+            print(f"   Found {len(genres)} genres for cold start")
+            if genres:
+                print(f"   Sample genre: {genres[0].get('genre', 'N/A')}")
+                print(f"   Sample movies: {len(genres[0].get('sample_movies', []))}")
+        return success
+
+    def test_coldstart_recommend(self):
+        """Test POST /api/coldstart/recommend with genres=['Action','Comedy']"""
+        success, response = self.run_test(
+            "Cold Start Recommendations",
+            "POST",
+            "coldstart/recommend",
+            200,
+            data={"genres": ["Action", "Comedy"], "top_n": 10}
+        )
+        if success and 'recommendations' in response:
+            recs = response['recommendations']
+            print(f"   Got {len(recs)} cold start recommendations")
+            print(f"   Selected genres: {response.get('selected_genres', [])}")
+        return success
+
+    def test_ab_test(self):
+        """Test GET /api/ab-test/1?algo_a=tfidf&algo_b=collaborative"""
+        success, response = self.run_test(
+            "A/B Test Comparison",
+            "GET",
+            "ab-test/1?algo_a=tfidf&algo_b=collaborative&top_n=10",
+            200
+        )
+        if success:
+            print(f"   Movie ID: {response.get('movie_id', 'N/A')}")
+            print(f"   Algorithm A: {response.get('algorithm_a', {}).get('name', 'N/A')}")
+            print(f"   Algorithm B: {response.get('algorithm_b', {}).get('name', 'N/A')}")
+            print(f"   Overlap count: {response.get('overlap_count', 0)}")
+            print(f"   Jaccard similarity: {response.get('jaccard_similarity', 0):.3f}")
+        return success
+
+    def test_user_clusters(self):
+        """Test GET /api/user-clusters - user clustering results"""
+        success, response = self.run_test(
+            "User Clustering",
+            "GET",
+            "user-clusters",
+            200
+        )
+        if success:
+            print(f"   Number of clusters: {response.get('n_clusters', 0)}")
+            print(f"   Total users: {response.get('total_users', 0)}")
+            cluster_stats = response.get('cluster_stats', {})
+            print(f"   Cluster stats available: {len(cluster_stats)} clusters")
+        return success
+
+    def test_diversity_score(self):
+        """Test GET /api/diversity/1?algorithm=tfidf - diversity score"""
+        success, response = self.run_test(
+            "Diversity Score",
+            "GET",
+            "diversity/1?algorithm=tfidf&top_n=10",
+            200
+        )
+        if success:
+            print(f"   Movie ID: {response.get('movie_id', 'N/A')}")
+            print(f"   Algorithm: {response.get('algorithm', 'N/A')}")
+            print(f"   Diversity score: {response.get('diversity', 0):.4f}")
+            print(f"   Recommendation count: {response.get('recommendation_count', 0)}")
+        return success
+
+    def test_similarity_graph(self):
+        """Test GET /api/similarity-graph/1?top_n=10 - graph data with nodes and links"""
+        success, response = self.run_test(
+            "Similarity Graph Data",
+            "GET",
+            "similarity-graph/1?top_n=10",
+            200
+        )
+        if success:
+            nodes = response.get('nodes', [])
+            links = response.get('links', [])
+            print(f"   Graph nodes: {len(nodes)}")
+            print(f"   Graph links: {len(links)}")
+            if nodes:
+                source_node = next((n for n in nodes if n.get('group') == 'source'), None)
+                if source_node:
+                    print(f"   Source movie: {source_node.get('title', 'N/A')}")
+        return success
+
 def main():
     print("🎬 MovieLens Recommendation System API Testing")
     print("=" * 60)
@@ -479,6 +613,17 @@ def main():
     # Test evaluation (this takes longer)
     print("\n📊 EVALUATION METRICS")
     tester.test_evaluation_metrics()
+    
+    # Test advanced features
+    print("\n🚀 ADVANCED FEATURES")
+    tester.test_explainable_recommendations()
+    tester.test_recommendations_with_explanations()
+    tester.test_coldstart_genres()
+    tester.test_coldstart_recommend()
+    tester.test_ab_test()
+    tester.test_user_clusters()
+    tester.test_diversity_score()
+    tester.test_similarity_graph()
     
     # Print final results
     print("\n" + "=" * 60)

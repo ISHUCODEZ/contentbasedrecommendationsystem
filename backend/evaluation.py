@@ -9,7 +9,7 @@ import logging, time
 
 logger = logging.getLogger(__name__)
 
-ALGO_NAMES = ['TF-IDF', 'Genre', 'Combined', 'Word2Vec', 'BERT', 'Collaborative', 'Hybrid']
+ALGO_NAMES = ['TF-IDF', 'Genre', 'Combined', 'Word2Vec', 'BERT', 'Collaborative', 'Hybrid', 'SVD', 'KnowledgeGraph', 'Sentiment']
 
 
 def _dcg(relevances, k):
@@ -84,6 +84,9 @@ def run_evaluation(rec_engine, k_values=None, n_users=50):
         'BERT':           rec_engine.get_recommendations_bert,
         'Collaborative':  rec_engine.get_recommendations_collaborative,
         'Hybrid':         rec_engine.get_recommendations_hybrid,
+        'SVD':            rec_engine.get_recommendations_svd,
+        'KnowledgeGraph': rec_engine.get_recommendations_kg,
+        'Sentiment':      rec_engine.get_recommendations_sentiment,
     }
 
     max_k = max(k_values)

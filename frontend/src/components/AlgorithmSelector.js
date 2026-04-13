@@ -9,6 +9,9 @@ const AlgorithmSelector = ({ selectedAlgorithm, onSelectAlgorithm }) => {
     { id: 'bert',          label: 'BERT',            description: 'Sentence embeddings' },
     { id: 'collaborative', label: 'Collaborative',   description: 'User-item CF' },
     { id: 'hybrid',        label: 'Hybrid',          description: 'Content + Collab' },
+    { id: 'svd',           label: 'SVD',             description: 'Matrix factorization' },
+    { id: 'kg',            label: 'KnowledgeGraph',  description: 'Graph-based' },
+    { id: 'sentiment',     label: 'Sentiment',       description: 'Sentiment-weighted' },
   ];
 
   return (

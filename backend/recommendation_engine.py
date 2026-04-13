@@ -20,11 +20,17 @@ class RecommendationEngine:
         self.bert_embeddings = None
         self.collab_matrix = None
         self.collab_movie_ids = None
+        self.svd_model = None
+        self.knowledge_graph = None
+        self.sentiment_weights = None
         self.load_data()
         self.prepare_features()
         self._build_word2vec_embeddings()
         self._build_bert_embeddings()
         self._build_collaborative_matrix()
+        self._build_svd()
+        self._build_knowledge_graph()
+        self._build_sentiment_weights()
 
     # ── DATA LOADING ─────────────────────────────────────────────────
 
@@ -316,6 +322,78 @@ class RecommendationEngine:
         recs['similarity_score'] = vals
         recs['algorithm'] = 'Personalized'
         return recs.to_dict('records')
+
+    # ── SVD MATRIX FACTORIZATION ─────────────────────────────────────
+
+    def _build_svd(self):
+        try:
+            from advanced_models import SVDRecommender
+            self.svd_model = SVDRecommender(self.ratings_df, n_components=50)
+            logger.info("SVD model built")
+        except Exception as e:
+            logger.error(f"SVD build failed: {e}")
+            self.svd_model = None
+
+    def get_recommendations_svd(self, movie_id: int, top_n=10):
+        if self.svd_model is None:
+            return []
+        return self.svd_model.recommend(movie_id, self.movies_df, top_n)
+
+    # ── KNOWLEDGE GRAPH ───────────────────────────────────────────────
+
+    def _build_knowledge_graph(self):
+        try:
+            from advanced_models import KnowledgeGraph
+            self.knowledge_graph = KnowledgeGraph(self.movies_df)
+            logger.info("Knowledge graph built")
+        except Exception as e:
+            logger.error(f"KG build failed: {e}")
+            self.knowledge_graph = None
+
+    def get_recommendations_kg(self, movie_id: int, top_n=10):
+        if self.knowledge_graph is None:
+            return []
+        return self.knowledge_graph.recommend(movie_id, self.movies_df, top_n)
+
+    # ── SENTIMENT WEIGHTS ─────────────────────────────────────────────
+
+    def _build_sentiment_weights(self):
+        try:
+            from advanced_models import sentiment_score
+            self.sentiment_weights = {}
+            for _, row in self.movies_df.iterrows():
+                text = str(row.get('tag', '')) + ' ' + str(row.get('description', ''))
+                self.sentiment_weights[row['movieId']] = sentiment_score(text)
+            logger.info("Sentiment weights computed")
+        except Exception as e:
+            logger.error(f"Sentiment build failed: {e}")
+            self.sentiment_weights = {}
+
+    def get_recommendations_sentiment(self, movie_id: int, top_n=10):
+        """TF-IDF boosted by sentiment alignment."""
+        try:
+            idx = self.movies_df[self.movies_df['movieId'] == movie_id].index[0]
+            sim = cosine_similarity(self.tfidf_matrix[idx], self.tfidf_matrix).flatten()
+            src_sent = self.sentiment_weights.get(movie_id, 0)
+            boosted = []
+            for i in range(len(sim)):
+                if i == idx:
+                    continue
+                mid = self.movies_df.iloc[i]['movieId']
+                tgt_sent = self.sentiment_weights.get(mid, 0)
+                # Boost if sentiment aligns
+                sent_boost = 1.0 + 0.3 * (1.0 - abs(src_sent - tgt_sent))
+                boosted.append((i, float(sim[i] * sent_boost)))
+            boosted.sort(key=lambda x: x[1], reverse=True)
+            boosted = boosted[:top_n]
+            idxs = [s[0] for s in boosted]
+            vals = [s[1] for s in boosted]
+            recs = self.movies_df.iloc[idxs][['movieId', 'title', 'genres', 'source']].copy()
+            recs['similarity_score'] = vals
+            recs['algorithm'] = 'Sentiment'
+            return recs.to_dict('records')
+        except IndexError:
+            return []
 
     # ── COMPARE ──────────────────────────────────────────────────────
 
