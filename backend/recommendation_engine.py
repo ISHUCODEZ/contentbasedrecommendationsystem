@@ -32,7 +32,8 @@ class RecommendationEngine:
         self.movies_df = pd.read_csv(self.data_path / 'movies.csv')
         self.ratings_df = pd.read_csv(self.data_path / 'ratings.csv')
         self.tags_df = pd.read_csv(self.data_path / 'tags.csv')
-        # Build a richer text column: genres + user tags
+
+        # Build richer text column: genres + user tags
         tags_agg = (
             self.tags_df.groupby('movieId')['tag']
             .apply(lambda x: ' '.join(x.astype(str)))
@@ -40,11 +41,46 @@ class RecommendationEngine:
         )
         self.movies_df = self.movies_df.merge(tags_agg, on='movieId', how='left')
         self.movies_df['tag'] = self.movies_df['tag'].fillna('')
+
+        # ── Load Netflix dataset for richer metadata ──
+        netflix_path = self.data_path.parent / 'netflix_titles.csv'
+        self.netflix_df = None
+        if netflix_path.exists():
+            self.netflix_df = pd.read_csv(netflix_path)
+            self.netflix_df = self.netflix_df.fillna('')
+            # Assign movieIds continuing from MovieLens max
+            max_ml_id = self.movies_df['movieId'].max()
+            self.netflix_df['movieId'] = range(max_ml_id + 1, max_ml_id + 1 + len(self.netflix_df))
+            self.netflix_df['genres'] = self.netflix_df['listed_in'].str.replace(', ', '|')
+            self.netflix_df['tag'] = ''
+            self.netflix_df['source'] = 'netflix'
+            logger.info(f"Loaded {len(self.netflix_df)} Netflix titles")
+
+        # Mark MovieLens source and add placeholder metadata
+        self.movies_df['source'] = 'movielens'
+        self.movies_df['director'] = ''
+        self.movies_df['cast'] = ''
+        self.movies_df['description'] = ''
+        self.movies_df['country'] = ''
+        self.movies_df['release_year'] = self.movies_df['title'].str.extract(r'\((\d{4})\)').astype(float)
+
+        # ── Merge Netflix metadata into unified dataframe ──
+        if self.netflix_df is not None:
+            nf = self.netflix_df[['movieId', 'title', 'genres', 'tag', 'source',
+                                   'director', 'cast', 'description', 'country',
+                                   'release_year']].copy()
+            nf['release_year'] = pd.to_numeric(nf['release_year'], errors='coerce')
+            self.movies_df = pd.concat([self.movies_df, nf], ignore_index=True)
+
+        # ── Build combined features text for ML models ──
         self.movies_df['combined_features'] = (
             self.movies_df['genres'].fillna('').str.replace('|', ' ', regex=False)
-            + ' ' + self.movies_df['tag']
+            + ' ' + self.movies_df['tag'].fillna('')
+            + ' ' + self.movies_df['director'].fillna('')
+            + ' ' + self.movies_df['cast'].fillna('').str.replace(', ', ' ', regex=False)
+            + ' ' + self.movies_df['description'].fillna('')
         )
-        logger.info(f"Loaded {len(self.movies_df)} movies, {len(self.ratings_df)} ratings")
+        logger.info(f"Combined dataset: {len(self.movies_df)} movies, {len(self.ratings_df)} ratings")
 
     # ── TF-IDF ───────────────────────────────────────────────────────
 
@@ -136,7 +172,7 @@ class RecommendationEngine:
         scores = scores[:top_n]
         idxs = [s[0] for s in scores]
         vals = [float(s[1]) for s in scores]
-        recs = self.movies_df.iloc[idxs][['movieId', 'title', 'genres']].copy()
+        recs = self.movies_df.iloc[idxs][['movieId', 'title', 'genres', 'source']].copy()
         recs['similarity_score'] = vals
         recs['algorithm'] = algo_name
         return recs.to_dict('records')
@@ -325,11 +361,11 @@ class RecommendationEngine:
     def search_movies(self, query, limit=20):
         q = query.lower()
         res = self.movies_df[self.movies_df['title'].str.lower().str.contains(q, na=False)]
-        return res.head(limit)[['movieId', 'title', 'genres']].to_dict('records')
+        return res.head(limit)[['movieId', 'title', 'genres', 'source']].to_dict('records')
 
     def get_movies_by_genre(self, genre, limit=20):
         res = self.movies_df[self.movies_df['genres'].str.contains(genre, case=False, na=False)]
-        return res.head(limit)[['movieId', 'title', 'genres']].to_dict('records')
+        return res.head(limit)[['movieId', 'title', 'genres', 'source']].to_dict('records')
 
     def get_movie_by_id(self, movie_id):
         row = self.movies_df[self.movies_df['movieId'] == movie_id]
@@ -337,10 +373,18 @@ class RecommendationEngine:
             return None
         r = row.iloc[0]
         mr = self.ratings_df[self.ratings_df['movieId'] == movie_id]
-        return {
+        result = {
             'movieId': int(r['movieId']),
             'title': r['title'],
             'genres': r['genres'],
             'average_rating': float(mr['rating'].mean()) if len(mr) else 0.0,
             'rating_count': int(len(mr)),
+            'source': str(r.get('source', 'movielens')),
+            'director': str(r.get('director', '')),
+            'cast': str(r.get('cast', '')),
+            'description': str(r.get('description', '')),
+            'country': str(r.get('country', '')),
         }
+        ry = r.get('release_year')
+        result['release_year'] = int(ry) if pd.notna(ry) else None
+        return result

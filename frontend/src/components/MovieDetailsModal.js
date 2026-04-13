@@ -1,74 +1,85 @@
 import React, { useState } from 'react';
-import { X, Star, TrendingUp } from 'lucide-react';
-import axios from 'axios';
+import { X, Star, TrendingUp, Heart, MapPin, Clapperboard, Users } from 'lucide-react';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const MovieDetailsModal = ({ movie, onClose, onGetRecommendations }) => {
+const MovieDetailsModal = ({ movie, onClose, onGetRecommendations, onRate, onToggleWatchlist, isAuthenticated }) => {
   const [rating, setRating] = useState(0);
   const [hoveredRating, setHoveredRating] = useState(0);
-  const [userId] = useState('user_' + Math.random().toString(36).substr(2, 9));
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
+  const [inWatchlist, setInWatchlist] = useState(false);
 
   if (!movie) return null;
 
   const handleRating = async (ratingValue) => {
-    try {
-      await axios.post(`${API}/movies/${movie.movieId}/rate`, {
-        user_id: userId,
-        movie_id: movie.movieId,
-        rating: ratingValue
-      });
-      setRating(ratingValue);
-      setRatingSubmitted(true);
-      setTimeout(() => setRatingSubmitted(false), 2000);
-    } catch (error) {
-      console.error('Error rating movie:', error);
+    setRating(ratingValue);
+    if (onRate) {
+      await onRate(movie.movieId, ratingValue);
+    }
+    setRatingSubmitted(true);
+    setTimeout(() => setRatingSubmitted(false), 2000);
+  };
+
+  const handleWatchlist = async () => {
+    if (onToggleWatchlist) {
+      const result = await onToggleWatchlist(movie.movieId);
+      if (result !== null) setInWatchlist(result);
     }
   };
 
+  const sourceColor = movie.source === 'netflix' ? 'text-red-500' : 'text-blue-400';
+  const sourceLabel = movie.source === 'netflix' ? 'Netflix' : 'MovieLens';
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-      onClick={onClose}
-      data-testid="movie-details-modal"
-    >
-      <div
-        className="bg-[#141414] border border-white/10 rounded-md max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={onClose} data-testid="movie-details-modal">
+      <div className="bg-[#141414] border border-white/10 rounded-md max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="relative">
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 z-10 bg-black/60 hover:bg-black/80 p-2 rounded-full transition-colors"
-            data-testid="close-modal-btn"
-          >
+          <button onClick={onClose} className="absolute top-4 right-4 z-10 bg-black/60 hover:bg-black/80 p-2 rounded-full transition-colors" data-testid="close-modal-btn">
             <X className="w-6 h-6" />
           </button>
-
-          <div className="relative h-64 bg-gradient-to-b from-transparent to-[#141414]">
-            <img
-              src="https://images.unsplash.com/photo-1688678004647-945d5aaf91c1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAxODF8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHRoZWF0ZXIlMjBzY3JlZW58ZW58MHx8fHwxNzc2MDcyMDg1fDA&ixlib=rb-4.1.0&q=85"
-              alt={movie.title}
-              className="w-full h-full object-cover opacity-50"
-            />
+          <div className="relative h-48 bg-gradient-to-b from-[#1F1F1F] to-[#141414] flex items-center justify-center">
+            <Clapperboard className="w-16 h-16 text-neutral-600" />
+            <div className="absolute top-4 left-4">
+              <span className={`text-xs font-bold px-2 py-1 rounded ${sourceColor} bg-black/60`} data-testid="movie-source-badge">
+                {sourceLabel}
+              </span>
+            </div>
           </div>
         </div>
 
         <div className="p-6">
           <h2 className="text-3xl font-bold mb-2" data-testid="modal-movie-title">{movie.title}</h2>
-          
+
+          {movie.release_year && (
+            <p className="text-neutral-400 text-sm mb-3">{movie.release_year}</p>
+          )}
+
           <div className="flex flex-wrap gap-2 mb-4">
-            {movie.genres && movie.genres.split('|').map((genre, index) => (
-              <span
-                key={index}
-                className="px-3 py-1 bg-[#1F1F1F] border border-white/10 rounded-full text-sm text-neutral-300"
-              >
-                {genre}
-              </span>
+            {movie.genres && movie.genres.split('|').map((genre, i) => (
+              <span key={i} className="px-3 py-1 bg-[#1F1F1F] border border-white/10 rounded-full text-sm text-neutral-300">{genre}</span>
             ))}
           </div>
+
+          {/* Metadata */}
+          {movie.director && (
+            <div className="flex items-start gap-2 mb-2 text-sm">
+              <span className="text-neutral-500 min-w-[70px]">Director:</span>
+              <span className="text-neutral-300">{movie.director}</span>
+            </div>
+          )}
+          {movie.cast && (
+            <div className="flex items-start gap-2 mb-2 text-sm">
+              <Users className="w-4 h-4 text-neutral-500 mt-0.5 flex-shrink-0" />
+              <span className="text-neutral-300 line-clamp-2">{movie.cast}</span>
+            </div>
+          )}
+          {movie.country && (
+            <div className="flex items-center gap-2 mb-2 text-sm">
+              <MapPin className="w-4 h-4 text-neutral-500 flex-shrink-0" />
+              <span className="text-neutral-300">{movie.country}</span>
+            </div>
+          )}
+          {movie.description && (
+            <p className="text-neutral-400 text-sm mb-4 leading-relaxed" data-testid="movie-description">{movie.description}</p>
+          )}
 
           {movie.average_rating > 0 && (
             <div className="flex items-center gap-4 mb-6">
@@ -80,7 +91,8 @@ const MovieDetailsModal = ({ movie, onClose, onGetRecommendations }) => {
             </div>
           )}
 
-          <div className="mb-6">
+          {/* Rating */}
+          <div className="mb-4">
             <h3 className="text-lg font-semibold mb-2">Rate this movie</h3>
             <div className="flex gap-2" data-testid="rating-stars">
               {[1, 2, 3, 4, 5].map((star) => (
@@ -92,29 +104,34 @@ const MovieDetailsModal = ({ movie, onClose, onGetRecommendations }) => {
                   className="transition-transform hover:scale-110"
                   data-testid={`rating-star-${star}`}
                 >
-                  <Star
-                    className="w-8 h-8"
-                    fill={star <= (hoveredRating || rating) ? '#E50914' : 'none'}
-                    stroke={star <= (hoveredRating || rating) ? '#E50914' : '#A3A3A3'}
-                  />
+                  <Star className="w-8 h-8" fill={star <= (hoveredRating || rating) ? '#E50914' : 'none'} stroke={star <= (hoveredRating || rating) ? '#E50914' : '#A3A3A3'} />
                 </button>
               ))}
             </div>
-            {ratingSubmitted && (
-              <p className="text-sm text-green-500 mt-2">Rating submitted successfully!</p>
-            )}
+            {ratingSubmitted && <p className="text-sm text-green-500 mt-2">Rating submitted!</p>}
+            {!isAuthenticated && <p className="text-xs text-neutral-500 mt-1">Sign in to save ratings to your profile</p>}
           </div>
 
-          <button
-            onClick={() => {
-              onGetRecommendations(movie.movieId);
-              onClose();
-            }}
-            className="w-full bg-[#E50914] hover:bg-[#F6121D] text-white py-3 rounded-md font-semibold transition-colors"
-            data-testid="get-recommendations-btn"
-          >
-            Get Similar Movies
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { onGetRecommendations(movie.movieId); onClose(); }}
+              className="flex-1 bg-[#E50914] hover:bg-[#F6121D] text-white py-3 rounded-md font-semibold transition-colors"
+              data-testid="get-recommendations-btn"
+            >
+              Get Similar Movies
+            </button>
+            {isAuthenticated && (
+              <button
+                onClick={handleWatchlist}
+                className={`px-4 py-3 rounded-md border transition-colors ${
+                  inWatchlist ? 'bg-[#E50914]/20 border-[#E50914] text-[#E50914]' : 'bg-[#1F1F1F] border-white/10 text-neutral-400 hover:text-white'
+                }`}
+                data-testid="watchlist-btn"
+              >
+                <Heart className="w-5 h-5" fill={inWatchlist ? '#E50914' : 'none'} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

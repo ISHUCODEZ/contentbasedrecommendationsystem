@@ -10,11 +10,17 @@ class MovieRecommendationTester:
         self.tests_run = 0
         self.tests_passed = 0
         self.failed_tests = []
+        self.access_token = None
+        self.session = requests.Session()
 
-    def run_test(self, name, method, endpoint, expected_status, data=None, timeout=30):
+    def run_test(self, name, method, endpoint, expected_status, data=None, timeout=30, auth_required=False):
         """Run a single API test"""
         url = f"{self.api_url}/{endpoint}"
         headers = {'Content-Type': 'application/json'}
+        
+        # Add auth header if required and token available
+        if auth_required and self.access_token:
+            headers['Authorization'] = f'Bearer {self.access_token}'
 
         self.tests_run += 1
         print(f"\n🔍 Testing {name}...")
@@ -22,9 +28,9 @@ class MovieRecommendationTester:
         
         try:
             if method == 'GET':
-                response = requests.get(url, headers=headers, timeout=timeout)
+                response = self.session.get(url, headers=headers, timeout=timeout)
             elif method == 'POST':
-                response = requests.post(url, json=data, headers=headers, timeout=timeout)
+                response = self.session.post(url, json=data, headers=headers, timeout=timeout)
 
             success = response.status_code == expected_status
             if success:
@@ -69,6 +75,229 @@ class MovieRecommendationTester:
                 'error': str(e)
             })
             return False, {}
+
+    # ═══════════════════════ AUTH TESTS ═══════════════════════
+    
+    def test_auth_register(self):
+        """Test POST /api/auth/register - register new user"""
+        test_email = f"test_{int(time.time())}@example.com"
+        success, response = self.run_test(
+            "User Registration",
+            "POST",
+            "auth/register",
+            200,
+            data={"email": test_email, "password": "testpass123", "name": "Test User"}
+        )
+        if success and 'token' in response:
+            self.access_token = response['token']
+            print(f"   Registered user: {response.get('email')}")
+            print(f"   User ID: {response.get('id')}")
+        return success
+
+    def test_auth_login_admin(self):
+        """Test POST /api/auth/login - login with admin credentials"""
+        success, response = self.run_test(
+            "Admin Login",
+            "POST",
+            "auth/login",
+            200,
+            data={"email": "admin@example.com", "password": "admin123"}
+        )
+        if success and 'token' in response:
+            self.access_token = response['token']
+            print(f"   Logged in as: {response.get('email')}")
+            print(f"   Role: {response.get('role')}")
+        return success
+
+    def test_auth_me(self):
+        """Test GET /api/auth/me - get current user with Bearer token"""
+        success, response = self.run_test(
+            "Get Current User",
+            "GET",
+            "auth/me",
+            200,
+            auth_required=True
+        )
+        if success:
+            print(f"   Current user: {response.get('email')}")
+            print(f"   Name: {response.get('name')}")
+        return success
+
+    def test_auth_logout(self):
+        """Test POST /api/auth/logout - logout"""
+        success, response = self.run_test(
+            "User Logout",
+            "POST",
+            "auth/logout",
+            200,
+            auth_required=True
+        )
+        if success:
+            print(f"   Logout message: {response.get('message')}")
+        return success
+
+    # ═══════════════════════ PROFILE TESTS ═══════════════════════
+
+    def test_profile_rate_movie(self):
+        """Test POST /api/profile/rate - rate a movie (authenticated)"""
+        success, response = self.run_test(
+            "Rate Movie",
+            "POST",
+            "profile/rate",
+            200,
+            data={"movie_id": 1, "rating": 4.5},
+            auth_required=True
+        )
+        if success:
+            print(f"   Rated movie {response.get('movie_id')} with {response.get('rating')} stars")
+        return success
+
+    def test_profile_get_ratings(self):
+        """Test GET /api/profile/ratings - get user ratings"""
+        success, response = self.run_test(
+            "Get User Ratings",
+            "GET",
+            "profile/ratings",
+            200,
+            auth_required=True
+        )
+        if success:
+            print(f"   User has {response.get('count', 0)} ratings")
+        return success
+
+    def test_profile_watchlist_toggle(self):
+        """Test POST /api/profile/watchlist - toggle movie in watchlist"""
+        success, response = self.run_test(
+            "Toggle Watchlist",
+            "POST",
+            "profile/watchlist",
+            200,
+            data={"movie_id": 2},
+            auth_required=True
+        )
+        if success:
+            status = "added to" if response.get('in_watchlist') else "removed from"
+            print(f"   Movie {response.get('movie_id')} {status} watchlist")
+        return success
+
+    def test_profile_get_watchlist(self):
+        """Test GET /api/profile/watchlist - get watchlist"""
+        success, response = self.run_test(
+            "Get Watchlist",
+            "GET",
+            "profile/watchlist",
+            200,
+            auth_required=True
+        )
+        if success:
+            print(f"   Watchlist has {response.get('count', 0)} movies")
+        return success
+
+    def test_profile_recommendation_history(self):
+        """Test GET /api/profile/recommendation-history - get history"""
+        success, response = self.run_test(
+            "Get Recommendation History",
+            "GET",
+            "profile/recommendation-history",
+            200,
+            auth_required=True
+        )
+        if success:
+            print(f"   History has {response.get('count', 0)} entries")
+        return success
+
+    # ═══════════════════════ DATASET TESTS ═══════════════════════
+
+    def test_dataset_stats(self):
+        """Test GET /api/dataset/stats - should show 17k+ total, 9742 MovieLens, 7787 Netflix"""
+        success, response = self.run_test(
+            "Dataset Statistics",
+            "GET",
+            "dataset/stats",
+            200
+        )
+        if success:
+            total = response.get('total_movies', 0)
+            ml_count = response.get('movielens_count', 0)
+            nf_count = response.get('netflix_count', 0)
+            ratings = response.get('total_ratings', 0)
+            
+            print(f"   Total movies: {total:,}")
+            print(f"   MovieLens: {ml_count:,}")
+            print(f"   Netflix: {nf_count:,}")
+            print(f"   Total ratings: {ratings:,}")
+            
+            # Validate expected counts
+            if total >= 17000:
+                print("   ✅ Total movies >= 17k")
+            else:
+                print(f"   ❌ Total movies {total} < 17k expected")
+                
+            if ml_count >= 9000:
+                print("   ✅ MovieLens count looks good")
+            else:
+                print(f"   ❌ MovieLens count {ml_count} seems low")
+                
+            if nf_count >= 7000:
+                print("   ✅ Netflix count looks good")
+            else:
+                print(f"   ❌ Netflix count {nf_count} seems low")
+        
+        return success
+
+    def test_movies_netflix_filter(self):
+        """Test GET /api/movies?source=netflix - filter movies by Netflix source"""
+        success, response = self.run_test(
+            "Netflix Movies Filter",
+            "GET",
+            "movies?source=netflix&limit=10",
+            200
+        )
+        if success and 'movies' in response:
+            movies = response['movies']
+            print(f"   Found {len(movies)} Netflix movies")
+            if movies:
+                # Check if all movies have Netflix source
+                netflix_movies = [m for m in movies if m.get('source') == 'netflix']
+                print(f"   Netflix source movies: {len(netflix_movies)}/{len(movies)}")
+        return success
+
+    def test_movie_netflix_details(self):
+        """Test GET /api/movies/1 - should include director, cast, description, source fields"""
+        # First get a Netflix movie ID
+        success, response = self.run_test(
+            "Get Netflix Movie for Details",
+            "GET",
+            "movies?source=netflix&limit=1",
+            200
+        )
+        
+        if success and response.get('movies'):
+            netflix_movie_id = response['movies'][0]['movieId']
+            
+            success, movie_response = self.run_test(
+                "Netflix Movie Details",
+                "GET",
+                f"movies/{netflix_movie_id}",
+                200
+            )
+            
+            if success:
+                required_fields = ['director', 'cast', 'description', 'source']
+                print(f"   Movie: {movie_response.get('title', 'N/A')}")
+                print(f"   Source: {movie_response.get('source', 'N/A')}")
+                
+                for field in required_fields:
+                    value = movie_response.get(field, '')
+                    if value:
+                        print(f"   ✅ {field}: {str(value)[:50]}...")
+                    else:
+                        print(f"   ❌ Missing {field}")
+            
+            return success
+        else:
+            print("   ❌ Could not find Netflix movie for testing")
+            return False
 
     def test_models_status(self):
         """Test GET /api/models/status - all 7 models should be active"""
@@ -202,10 +431,36 @@ def main():
     
     tester = MovieRecommendationTester()
     
-    # Test basic endpoints first
+    # Test dataset stats first
+    print("\n📊 DATASET STATISTICS")
+    tester.test_dataset_stats()
+    
+    # Test auth endpoints
+    print("\n🔐 AUTHENTICATION TESTS")
+    tester.test_auth_register()
+    tester.test_auth_me()
+    
+    # Test profile endpoints (requires auth)
+    print("\n👤 PROFILE TESTS")
+    tester.test_profile_rate_movie()
+    tester.test_profile_get_ratings()
+    tester.test_profile_watchlist_toggle()
+    tester.test_profile_get_watchlist()
+    tester.test_profile_recommendation_history()
+    
+    # Test logout
+    tester.test_auth_logout()
+    
+    # Login as admin for remaining tests
+    print("\n🔐 ADMIN LOGIN")
+    tester.test_auth_login_admin()
+    
+    # Test basic endpoints
     print("\n📋 BASIC ENDPOINTS")
     tester.test_movies_endpoint()
     tester.test_movie_details()
+    tester.test_movies_netflix_filter()
+    tester.test_movie_netflix_details()
     tester.test_genres()
     tester.test_search()
     

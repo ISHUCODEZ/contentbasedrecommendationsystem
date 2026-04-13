@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import '@/App.css';
 import axios from 'axios';
+import { AuthProvider, useAuth } from './components/AuthContext';
+import AuthPage from './components/AuthPage';
 import Navbar from './components/Navbar';
 import HeroSection from './components/HeroSection';
 import MovieRow from './components/MovieRow';
@@ -9,13 +11,16 @@ import AlgorithmSelector from './components/AlgorithmSelector';
 import GenreFilter from './components/GenreFilter';
 import SimilarityBreakdown from './components/SimilarityBreakdown';
 import EvaluationPage from './components/EvaluationPage';
+import ProfilePage from './components/ProfilePage';
 import { Loader2 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
-function App() {
-  const [page, setPage] = useState('home'); // 'home' | 'evaluation'
+function AppContent() {
+  const { user, loading: authLoading, login, register, logout, getAuthHeaders } = useAuth();
+  const [page, setPage] = useState('home');
+  const [isGuest, setIsGuest] = useState(false);
   const [featuredMovie, setFeaturedMovie] = useState(null);
   const [movies, setMovies] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
@@ -27,28 +32,34 @@ function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [similarityData, setSimilarityData] = useState(null);
+  const [datasetStats, setDatasetStats] = useState(null);
+
+  const isAuthenticated = user || isGuest;
 
   useEffect(() => {
-    loadInitialData();
-  }, []);
+    if (isAuthenticated) loadInitialData();
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    if (selectedGenre) {
-      loadMoviesByGenre(selectedGenre);
-    } else {
-      loadMovies();
+    if (isAuthenticated) {
+      if (selectedGenre) loadMoviesByGenre(selectedGenre);
+      else loadMovies();
     }
-  }, [selectedGenre]);
+  }, [selectedGenre, isAuthenticated]);
 
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      const genresRes = await axios.get(`${API}/genres`);
-      setGenres(genresRes.data.genres.filter(g => g !== '(no genres listed)').slice(0, 15));
+      const [genresRes, statsRes] = await Promise.all([
+        axios.get(`${API}/genres`),
+        axios.get(`${API}/dataset/stats`),
+      ]);
+      setGenres(genresRes.data.genres.filter(g => g !== '(no genres listed)').slice(0, 18));
+      setDatasetStats(statsRes.data);
       await loadMovies();
       setLoading(false);
     } catch (error) {
-      console.error('Error loading initial data:', error);
+      console.error('Error:', error);
       setLoading(false);
     }
   };
@@ -63,7 +74,7 @@ function App() {
         setFeaturedMovie(movieDetails.data);
       }
     } catch (error) {
-      console.error('Error loading movies:', error);
+      console.error('Error:', error);
     }
   };
 
@@ -72,21 +83,29 @@ function App() {
       const res = await axios.get(`${API}/movies?genre=${genre}&limit=50`);
       setMovies(res.data.movies);
     } catch (error) {
-      console.error('Error loading movies by genre:', error);
+      console.error('Error:', error);
     }
   };
 
   const handleGetRecommendations = async (movieId) => {
     try {
       setLoading(true);
-      const res = await axios.get(
-        `${API}/recommendations/${movieId}?algorithm=${selectedAlgorithm}&top_n=20`
-      );
+      const res = await axios.get(`${API}/recommendations/${movieId}?algorithm=${selectedAlgorithm}&top_n=20`);
       setRecommendations(res.data.recommendations);
+      // Save to history if authenticated
+      if (user) {
+        try {
+          await axios.post(`${API}/profile/recommendation-history`, {
+            movie_id: movieId,
+            algorithm: selectedAlgorithm,
+            recommendations: res.data.recommendations.slice(0, 5).map(r => r.title),
+          }, { headers: getAuthHeaders(), withCredentials: true });
+        } catch {}
+      }
       setLoading(false);
       window.scrollTo({ top: window.innerHeight, behavior: 'smooth' });
     } catch (error) {
-      console.error('Error getting recommendations:', error);
+      console.error('Error:', error);
       setLoading(false);
     }
   };
@@ -97,23 +116,48 @@ function App() {
       setSelectedMovie(movieDetails.data);
       setShowModal(true);
       if (featuredMovie && movie.movieId !== featuredMovie.movieId) {
-        const simRes = await axios.get(`${API}/similarity/${featuredMovie.movieId}/${movie.movieId}`);
-        setSimilarityData(simRes.data);
+        try {
+          const simRes = await axios.get(`${API}/similarity/${featuredMovie.movieId}/${movie.movieId}`);
+          setSimilarityData(simRes.data);
+        } catch {}
       }
     } catch (error) {
-      console.error('Error loading movie details:', error);
+      console.error('Error:', error);
     }
   };
 
   const handleSearch = async (query) => {
     try {
       setLoading(true);
+      setPage('home');
       const res = await axios.post(`${API}/search`, { query, limit: 30 });
       setSearchResults(res.data.results);
       setLoading(false);
     } catch (error) {
-      console.error('Error searching movies:', error);
+      console.error('Error:', error);
       setLoading(false);
+    }
+  };
+
+  const handleRateMovie = async (movieId, rating) => {
+    if (!user) return;
+    try {
+      await axios.post(`${API}/profile/rate`, { movie_id: movieId, rating },
+        { headers: getAuthHeaders(), withCredentials: true });
+    } catch (err) {
+      console.error('Error rating:', err);
+    }
+  };
+
+  const handleToggleWatchlist = async (movieId) => {
+    if (!user) return;
+    try {
+      const res = await axios.post(`${API}/profile/watchlist`, { movie_id: movieId },
+        { headers: getAuthHeaders(), withCredentials: true });
+      return res.data.in_watchlist;
+    } catch (err) {
+      console.error('Error watchlist:', err);
+      return null;
     }
   };
 
@@ -123,18 +167,52 @@ function App() {
     setSimilarityData(null);
   };
 
+  const handleLogout = async () => {
+    await logout();
+    setIsGuest(false);
+    setPage('home');
+  };
+
+  // Auth check
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-[#E50914] animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <AuthPage
+        onLogin={login}
+        onRegister={register}
+        onSkip={() => setIsGuest(true)}
+      />
+    );
+  }
+
   if (page === 'evaluation') {
     return (
       <div data-testid="app-container">
-        <Navbar onSearch={handleSearch} onNavigate={setPage} currentPage={page} />
+        <Navbar onSearch={handleSearch} onNavigate={setPage} currentPage={page} user={user} onLogout={handleLogout} isGuest={isGuest} />
         <EvaluationPage onBack={() => setPage('home')} />
+      </div>
+    );
+  }
+
+  if (page === 'profile') {
+    return (
+      <div data-testid="app-container">
+        <Navbar onSearch={handleSearch} onNavigate={setPage} currentPage={page} user={user} onLogout={handleLogout} isGuest={isGuest} />
+        <ProfilePage onBack={() => setPage('home')} onMovieClick={handleMovieClick} />
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-[#0A0A0A]" data-testid="app-container">
-      <Navbar onSearch={handleSearch} onNavigate={setPage} currentPage={page} />
+      <Navbar onSearch={handleSearch} onNavigate={setPage} currentPage={page} user={user} onLogout={handleLogout} isGuest={isGuest} />
 
       {loading && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -148,24 +226,32 @@ function App() {
         onGetRecommendations={handleGetRecommendations}
       />
 
-      <div className="mt-8">
-        <AlgorithmSelector
-          selectedAlgorithm={selectedAlgorithm}
-          onSelectAlgorithm={setSelectedAlgorithm}
-        />
+      {/* Dataset Stats Banner */}
+      {datasetStats && (
+        <div className="px-4 md:px-8 lg:px-12 mt-6 mb-4">
+          <div className="flex flex-wrap gap-4 text-sm text-neutral-400">
+            <span className="bg-[#141414] border border-white/5 px-3 py-1 rounded-md">
+              {datasetStats.total_movies.toLocaleString()} Movies
+            </span>
+            <span className="bg-[#141414] border border-white/5 px-3 py-1 rounded-md">
+              <span className="text-blue-400">MovieLens</span>: {datasetStats.movielens_count.toLocaleString()}
+            </span>
+            <span className="bg-[#141414] border border-white/5 px-3 py-1 rounded-md">
+              <span className="text-red-400">Netflix</span>: {datasetStats.netflix_count.toLocaleString()}
+            </span>
+            <span className="bg-[#141414] border border-white/5 px-3 py-1 rounded-md">
+              {datasetStats.total_ratings.toLocaleString()} Ratings
+            </span>
+          </div>
+        </div>
+      )}
 
-        <GenreFilter
-          genres={genres}
-          selectedGenre={selectedGenre}
-          onSelectGenre={setSelectedGenre}
-        />
+      <div className="mt-4">
+        <AlgorithmSelector selectedAlgorithm={selectedAlgorithm} onSelectAlgorithm={setSelectedAlgorithm} />
+        <GenreFilter genres={genres} selectedGenre={selectedGenre} onSelectGenre={setSelectedGenre} />
 
         {searchResults.length > 0 && (
-          <MovieRow
-            title="Search Results"
-            movies={searchResults}
-            onMovieClick={handleMovieClick}
-          />
+          <MovieRow title="Search Results" movies={searchResults} onMovieClick={handleMovieClick} />
         )}
 
         {recommendations.length > 0 && (
@@ -207,13 +293,24 @@ function App() {
           movie={selectedMovie}
           onClose={handleCloseModal}
           onGetRecommendations={handleGetRecommendations}
+          onRate={handleRateMovie}
+          onToggleWatchlist={handleToggleWatchlist}
+          isAuthenticated={!!user}
         />
       )}
 
       <footer className="mt-16 py-8 border-t border-white/10 text-center text-neutral-400">
-        <p className="text-sm">Content-Based Recommendation System | MovieLens Dataset</p>
+        <p className="text-sm">Content-Based Recommendation System | MovieLens + Netflix Dataset</p>
       </footer>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 
