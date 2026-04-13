@@ -1,39 +1,31 @@
 # Content-Based Recommendation System - PRD
 
 ## Problem Statement
-Design a Content Based Recommendation System using MovieLens and Netflix dataset with word embeddings, hybrid recommendations, evaluation metrics, authentication, and user profiles.
+Design an advanced Content Based Recommendation System using MovieLens + Netflix datasets with 10 recommendation algorithms, evaluation metrics, authentication, user profiles, and 13 advanced features.
 
 ## Architecture
-- **Backend**: FastAPI + Python (scikit-learn, gensim, sentence-transformers, bcrypt, PyJWT)
-- **Frontend**: React + TailwindCSS + Recharts + Framer Motion
+- **Backend**: FastAPI + Python (scikit-learn, gensim, sentence-transformers, bcrypt, PyJWT, D3 graph data)
+- **Frontend**: React + TailwindCSS + Recharts + D3.js + Framer Motion
 - **Database**: MongoDB (users, ratings, watchlist, recommendation history)
-- **Datasets**: MovieLens ml-latest-small (9,742 movies) + Netflix Movies & TV Shows (7,787 titles) = 17,529 total
+- **Datasets**: MovieLens (9,742) + Netflix (7,787) = 17,529 movies
 
-## What's Been Implemented (April 2026)
+## All 13 Advanced Features Implemented
 
-### Phase 1: Core Recommendation System
-- TF-IDF + Cosine Similarity
-- Genre-Based Matching (Jaccard)
-- Combined (weighted TF-IDF + Genre)
-- Netflix-style dark cinematic UI
+1. **Explainable Recommendations** - Shows WHY each movie is recommended (shared genres, directors, cast)
+2. **Cold-Start Quiz** - New users pick genres → instant personalized recommendations
+3. **Time-Decay Weighting** - Recent ratings weighted more heavily
+4. **Diversity & Serendipity Metrics** - Measures recommendation diversity and surprise factor
+5. **SVD Matrix Factorization** - TruncatedSVD on user-item matrix
+6. **Knowledge Graph** - Graph-based similarity using genre/director/cast nodes
+7. **Sentiment-Weighted Tags** - Lexicon-based sentiment boosts/penalizes recommendations
+8. **User Clustering** - K-Means clustering of 610 users into 8 taste profiles
+9. **A/B Testing** - Side-by-side algorithm comparison with overlap/Jaccard metrics
+10. **Source Badges** - MovieLens (ML) / Netflix (N) badges on cards
+11. **Interactive Similarity Graph** - D3.js force-directed graph visualization
+12. **10 Recommendation Algorithms** - TF-IDF, Genre, Combined, Word2Vec, BERT, Collaborative, Hybrid, SVD, KnowledgeGraph, Sentiment
+13. **JWT Auth + User Profiles** - Ratings, watchlist, recommendation history
 
-### Phase 2: Advanced Models + Evaluation
-- Word2Vec (Gensim) embeddings
-- Sentence-BERT (all-MiniLM-L6-v2)
-- Collaborative Filtering (item-item CF)
-- Hybrid (50% content + 50% collaborative)
-- Evaluation: Precision@K, Recall@K, F1@K, MAP@K, NDCG@K
-- Model comparison dashboard with bar/radar charts
-
-### Phase 3: Netflix + Auth + Profiles
-- Netflix Movies & TV Shows dataset integrated (7,787 titles with director, cast, description)
-- JWT email/password authentication (bcrypt hashing)
-- User profiles: ratings, watchlist/favorites, recommendation history
-- Source badges (MovieLens/Netflix) on movie cards
-- Rich movie metadata display (director, cast, country, description)
-
-## Prioritized Backlog
-- P1: Netflix ratings data (currently metadata only)
-- P2: Real movie posters via TMDB API (when user provides key)
-- P2: A/B testing framework for recommendation algorithms
-- P3: Social features (share recommendations, follow users)
+## Evaluation Metrics
+- Precision@K, Recall@K, F1@K, MAP@K, NDCG@K
+- Configurable K (5, 10, 20)
+- All 10 models compared in bar/radar charts and detailed table
